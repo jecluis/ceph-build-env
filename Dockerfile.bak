@@ -1,0 +1,49 @@
+# vim: ft=dockerfile
+FROM opensuse/leap:42.3
+LABEL maintainer="Joao Eduardo Luis <joao@suse.com>"
+
+RUN echo "opensuse leap 42.3 - ceph build - luminous git"
+
+# assume branch as 'luminous' by default; let the user specify otherwise
+# via a runtime --env override
+#
+ENV CEPH_RELEASE luminous
+
+# install system dependencies
+#
+RUN zypper --gpg-auto-import-keys refresh
+RUN zypper -n dup
+RUN zypper -n install git sudo wget ccache
+
+# prepare build user
+#
+RUN useradd -d /ceph -c 'ceph build' -u 1000 -U ceph-build
+RUN mkdir /ceph && chown ceph-build:ceph-build /ceph
+
+RUN mkdir /ceph/tmp
+WORKDIR /ceph/tmp
+
+# we are setting this image for luminous
+#
+RUN (echo "clone luminous" && \
+      git clone https://github.com/ceph/ceph.git ceph.luminous)
+WORKDIR /ceph/tmp/ceph.luminous
+RUN (echo "install luminous dependencies" && \
+      git checkout origin/luminous -b luminous)
+
+RUN /bin/bash ./install-deps.sh
+# done with installing deps; remove repo
+RUN rm -fr /ceph/tmp/ceph.luminous
+
+WORKDIR /ceph
+USER ceph-build:ceph-build
+RUN echo "prepare build directory tree"
+RUN echo "  source directory at /ceph/src" && mkdir /ceph/src
+RUN echo "  build directory at /ceph/builds" && mkdir /ceph/builds
+RUN echo "  ccache directory at /ceph/ccache" && mkdir /ceph/ccache
+RUN echo "  bin directory at /ceph/bin" && mkdir /ceph/bin
+
+ADD bin/ /ceph/bin
+
+VOLUME ["/ceph/src", "/ceph/builds", "/ceph/ccache" ]
+ENTRYPOINT [ "/ceph/bin/build-branch.sh" ]
