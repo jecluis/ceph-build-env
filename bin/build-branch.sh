@@ -1,16 +1,20 @@
 #!/bin/bash
 
 echo "----------------------------------------------------------------------"
-echo "                        ENTRYPOINT                                    "
+echo "                      BUILD BRANCH ENTRY                              "
 echo "----------------------------------------------------------------------"
 echo " ENVIRONMENT VARIABLES                                                "
 echo ""
 env
 echo "----------------------------------------------------------------------"
 
+release=${CEPH_RELEASE}
+[[ -z "${release}" ]] && \
+  echo -e "CEPH_RELEASE not defined.\nThe container should do it.\nAbort." \
+  && exit 1
 
-release=${CEPH_RELEASE:-luminous}
 src_dir=${CEPH_SOURCE_DIR:-/ceph/src}
+bin_dir=${CEPH_BIN_DIR:-/ceph/bin}
 
 [[ ! -e "${src_dir}" ]] && \
   echo "source directory at '${src_dir}' does not exist; abort" && exit 1
@@ -20,10 +24,11 @@ src_dir=${CEPH_SOURCE_DIR:-/ceph/src}
 [[ ! -e "${src_dir}/.git" ]] && \
   echo "there isn't a git repository in '${src_dir}'; abort" && exit 1
 
-branch=${CEPH_BRANCH:-$release}
+cur_git_branch=$(${bin_dir}/get-ceph-branch.sh ${src_dir} name)
+[[ -z "${cur_git_branch}" ]] && \
+  echo "no current branch checked out at ${src_dir}; abort." && exit 1
 
-[[ -z "$branch" ]] && \
-  echo "error: CEPH_BRANCH and CEPH_RELEASE not specified; abort" && exit 1
+branch=${CEPH_BRANCH:-${cur_git_branch}}
 
 build_base_dir=${CEPH_BASE_BUILD_DIR:-/ceph/builds}
 [[ ! -e "${build_base_dir}" ]] && \
@@ -60,8 +65,8 @@ cd $src_dir
 git checkout $branch
 
 sha=$(git rev-parse --short HEAD)
-build="${branch}-${sha}-$(date +%Y-%m-%dT%H-%M-%S)"
+build="git-${branch}-${sha}-$(date +%Y-%m-%dT%H-%M-%S)"
 build_dir=${CEPH_BUILD_DIR:-${release_build_dir}/${build}}
 
-../bin/ceph-do-cmake.sh $build_dir $src_dir
+${bin_dir}/ceph-do-cmake.sh $build_dir $src_dir
 

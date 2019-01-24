@@ -25,6 +25,10 @@ BUILD_NUM_CORES=${BUILD_NUM_CORES:-2}
   echo "source dir does not exist at '$src_dir'" && exit 1
 
 cd $src_dir
+
+echo "install possible missing dependencies"
+./install-deps.sh || exit 1
+
 echo "preparing source repo at ${src_dir}"
 git submodule update --init --recursive || exit 1
 
@@ -53,7 +57,17 @@ if [[ -n "${CEPH_BUILD_DRY_RUN}" ]]; then
   exit 0
 fi
 
-cmake \
+pybuild=${CEPH_BUILD_PYBUILD:-"2"}
+if [[ "$pybuild" == "3" ]]; then
+  ARGS="$ARGS -DWITH_PYTHON2=OFF -DWITH_PYTHON3=ON -DMGR_PYTHON_VERSION=3"
+fi
+
+CMAKE=cmake
+if type cmake3 >/dev/null 2>&1 ; then
+  CMAKE=cmake3
+fi
+
+${CMAKE} \
   -DBOOST_J=$(nproc) \
   -DWITH_LTTNG=OFF -DWITH_BABELTRACE=OFF \
   $ARGS $@ $src_dir || exit 1
