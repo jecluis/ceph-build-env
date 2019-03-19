@@ -2,7 +2,7 @@
 FROM ceph-build-env/base:luminous
 LABEL maintainer="Joao Eduardo Luis <joao@suse.com>"
 
-RUN echo "opensuse leap 42.3 - ceph build - luminous git"
+RUN echo "opensuse leap 42.3 - ceph build - luminous rpm"
 
 # there are the defaults we are expecting.
 # the entrypoint script should not need them, but still to make it obvious.
@@ -12,4 +12,5 @@ ENV CEPH_BRANCH luminous
 ENV CEPH_BASE_BUILD_DIR /ceph/builds
 ENV CEPH_BASE_CCACHE_DIR /ceph/ccache
 
-ENTRYPOINT [ "/ceph/bin/build-branch.sh" ]
+#ENTRYPOINT [ "/ceph/bin/build-branch.sh" ]
+CMD /bin/bash

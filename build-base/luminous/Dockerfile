@@ -1,5 +1,5 @@
 # vim: ft=dockerfile
-FROM ceph-build-base
+FROM ceph-build-env/base:leap-42.3
 LABEL maintainer="Joao Eduardo Luis <joao@suse.com>"
 
 RUN echo "opensuse leap 42.3 - ceph base build deps - luminous"
@@ -14,13 +14,13 @@ WORKDIR /ceph/tmp
 
 # we are setting this image for luminous
 #
-RUN (echo "clone luminous" && \
-      git clone https://github.com/ceph/ceph.git ceph.luminous)
-WORKDIR /ceph/tmp/ceph.luminous
-RUN (echo "install luminous dependencies" && \
-      git checkout origin/luminous -b luminous)
-
+RUN (echo "grab install-deps.sh from github" && \
+      wget https://github.com/ceph/ceph/raw/luminous/install-deps.sh)
+RUN (echo "grab ceph.spec.in from github" && \
+      wget https://github.com/ceph/ceph/raw/luminous/ceph.spec.in)
 RUN /bin/bash ./install-deps.sh
+
 # done with installing deps; remove repo
-RUN rm -fr /ceph/tmp/ceph.luminous
+WORKDIR /ceph
+RUN rm -fr /ceph/tmp
 
