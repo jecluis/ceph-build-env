@@ -1,0 +1,102 @@
+#!/bin/bash
+
+usage() {
+  cat << EOF
+usage: $0 <srcdir> <cmd>
+
+commands:
+  branch [name|sha [name] ]
+  git-path
+  tag
+
+EOF
+}
+
+if [[ $# -lt 2 ]]; then
+  usage 
+  exit 1
+fi
+
+srcdir=$(realpath $1)
+shift
+
+if [[ ! -e "${srcdir}" ]]; then
+  echo "src dir at '${srcdir}' does not exist"
+  exit 1
+elif [[ ! -d "${srcdir}" ]]; then
+  echo "src dir at '${srcdir}' is not a directory"
+  exit 1
+elif [[ ! -d "${srcdir}/.git" ]]; then
+  echo "src dir at '${srcdir}' is not a git repository"
+  exit 1
+fi
+
+do_branch=false
+do_git_path=false
+do_tag=false
+do_sha=false
+
+do_branch_cmd="name"
+cmd=$1
+sha_branch=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    branch)
+      do_branch=true
+      if [[ -n "$2" ]]; then
+        do_branch_cmd="$2"
+        shift
+      fi
+      if [[ "${do_branch_cmd}" == "sha" ]]; then
+        if [[ -n "$2" ]]; then
+          sha_branch="$2"
+          shift
+        fi
+      fi
+      ;;
+    git-path)
+      do_git_path=true
+      ;;
+    tag)
+      do_tag=true
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+export GIT_DIR=${srcdir}/.git
+export GIT_WORK_TREE=${srcdir}
+
+if $do_branch ; then
+  if [[ "${do_branch_cmd}" == "name" ]]; then
+    git symbolic-ref --short HEAD 2>/dev/null | tr '/' '_'
+  elif [[ "${do_branch_cmd}" == "sha" ]]; then
+    [[ -z "${branch_name}" ]] &&
+      branch_name=$(git symbolic-ref --short HEAD 2>/dev/null  | tr '/' '_')
+
+    sha=$(git rev-parse --short ${branch_name} 2>/dev/null)
+    [[ $? -ne 0 ]] && exit 1
+    echo ${sha}
+  else
+    usage
+    exit 1
+  fi
+
+elif $do_git_path ; then
+  abs_path=$(realpath ${srcdir})
+  echo "file://${abs_path}/.git"
+
+elif $do_tag ; then
+  echo $(git describe --abbrev=0 --tags)
+
+else
+  2>& echo "unrecognized command '${cmd}'"
+  usage
+  exit 1
+fi
+
