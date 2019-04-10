@@ -5,7 +5,7 @@ echo "                      BUILD BRANCH ENTRY                              "
 echo "----------------------------------------------------------------------"
 echo " ENVIRONMENT VARIABLES                                                "
 echo ""
-env
+env | sort
 echo "----------------------------------------------------------------------"
 
 branch=${CEPH_BRANCH}
@@ -63,7 +63,8 @@ branch=${CEPH_BRANCH:-${cur_git_branch}}
 src_git_sha=$(${bin_dir}/git-helper.sh ${src_dir} \
   branch get-sha ${branch} 2>/dev/null)
 [[ $? -ne 0 ]] && \
-  echo "unable to "
+  echo "unable to obtain source git's sha from '${src_dir}'" && \
+  exit 1
 
 # validate build dir path
 #

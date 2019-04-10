@@ -2,8 +2,42 @@
 
 export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 
+find_remote() {
+  local branch=$1
+
+  ref=$(git for-each-ref --format='%(refname:short) %(objectname:short)' \
+    "refs/remotes/*/${branch}" --sort='committerdate' --count=1)
+  [[ -z "${ref}" ]] && \
+    echo "unable to find reference for branch '${branch}' in all remotes" && \
+    exit 1
+
+  remote_ref=$(echo ${ref} | cut -f1 -d' ')
+  remote_sha=$(echo ${ref} | cut -f2 -d' ')
+
+  [[ -z "${remote_ref}" ]] && \
+    echo "remote ref for '${branch}' not found" && \
+    exit 1
+  [[ -z "${remote_sha}" ]] && \
+    echo "remote sha for branch '${branch_name}' not available" && \
+    exit 1
+
+  remote_name=$(echo ${remote_ref} | cut -f1 -d'/')
+  branch_name=$(echo ${remote_ref} | cut -f2 -d'/')
+
+  [[ -z "${remote_name}" ]] && \
+    echo "unable to find a remote for branch '${branch}'" && \
+    exit 1
+
+  [[ "${branch_name}" != "${branch}" ]] && \
+    echo "branch found at remote '${remote_name}' is not '${branch}'" && \
+    exit 1
+
+
+  echo "${remote_name} ${remote_sha}"
+}
+
 get_repo_path() {
-  abs_path=$(realpath $1)
+  abs_path=$(realpath -m $1)
   echo "file://${abs_path}/.git"
 }
 
@@ -28,7 +62,7 @@ if [[ $# -lt 2 ]]; then
   exit 1
 fi
 
-srcdir=$(realpath $1)
+srcdir=$(realpath -m $1)
 [[ $? -ne 0 ]] && \
   echo "source dir at '$1' does not exist" && exit 1
 shift
@@ -97,7 +131,7 @@ while [[ $# -gt 0 ]]; do
     do-clone)
       cmd_do_clone=true
       [[ -z "$2" ]] && usage && exit 1
-      cmd_do_clone_target=$(realpath $2)
+      cmd_do_clone_target=$(realpath -m $2)
       cmd_needs_exports=false
       shift
       ;;
@@ -125,6 +159,11 @@ if $cmd_is_read || $cmd_needs_exports; then
   export GIT_DIR=${srcdir}/.git
   export GIT_WORK_TREE=${srcdir}
 fi
+
+if $cmd_branch_find ; then
+  find_branch ${branch}
+fi
+
 
 if $cmd_get_branch ; then
   if [[ "${cmd_get_branch_op}" == "get-name" ]]; then

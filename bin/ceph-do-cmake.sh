@@ -46,6 +46,11 @@ case $pybuild in
     ;;
 esac
 
+branch_name=${CEPH_BRANCH}
+if [[ -z "${branch_name}" ]]; then
+  # obtain currently checked-out branch name
+fi
+
 cat << EOF
 preparing build
   #CORES:    ${BUILD_NUM_CORES}
@@ -54,7 +59,7 @@ preparing build
 
   BIN DIR:   ${bin_dir}
   BUILD DIR: ${build_dir}
-  BRANCH:    $(${bin_dir}/git-helper.sh ${build_dir} branch get-name)
+  BRANCH:    ${branch_name}
   SHA:       $(${bin_dir}/git-helper.sh ${build_dir} branch get-sha)
 EOF
 [[ $with_ccache ]] && \

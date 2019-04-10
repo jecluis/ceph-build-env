@@ -9,5 +9,9 @@ ENV CEPH_BRANCH luminous
 ENV CEPH_BASE_BUILD_DIR /ceph/builds
 ENV CEPH_BASE_CCACHE_DIR /ceph/ccache
 
+WORKDIR /ceph
+
+RUN (echo "grab dot-files from github
+
 CMD /bin/bash
 

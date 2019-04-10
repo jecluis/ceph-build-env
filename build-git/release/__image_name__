@@ -1,1 +1,1 @@
-ceph-build-env/git:${CEPH_RELEASE}-${DISTRO}
+ceph-build-env/git:${DISTRO}-${RELEASE}

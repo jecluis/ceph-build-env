@@ -1,13 +1,14 @@
 # vim: ft=dockerfile
-FROM ceph-build-env/base:leap-15.0
+ARG DISTRO=leap-42.3
+FROM ceph-build-env/base:${DISTRO}
 LABEL maintainer="Joao Eduardo Luis <joao@suse.com>"
 
-RUN echo "opensuse leap 15.0 - ceph base build deps - master"
+RUN echo "${DISTRO} - ceph base build deps - luminous"
 
 # assume branch as 'luminous' by default; let the user specify otherwise
 # via a runtime --env override
 #
-ENV CEPH_RELEASE master
+ENV CEPH_RELEASE luminous
 
 RUN mkdir /ceph/tmp
 WORKDIR /ceph/tmp
@@ -15,10 +16,12 @@ WORKDIR /ceph/tmp
 # we are setting this image for luminous
 #
 RUN (echo "grab install-deps.sh from github" && \
-      wget https://github.com/ceph/ceph/raw/master/install-deps.sh)
+      wget https://github.com/ceph/ceph/raw/luminous/install-deps.sh)
 RUN (echo "grab ceph.spec.in from github" && \
-      wget https://github.com/ceph/ceph/raw/master/ceph.spec.in)
+      wget https://github.com/ceph/ceph/raw/luminous/ceph.spec.in)
 RUN /bin/bash ./install-deps.sh
+
 # done with installing deps; remove repo
 WORKDIR /ceph
 RUN rm -fr /ceph/tmp
+
