@@ -1,0 +1,109 @@
+#!/bin/bash
+
+
+usage() {
+  cat <<EOF
+usage: $0 <command>
+
+COMMANDS:
+
+  help | --help | -h
+      Show this message.
+
+  prepare [PATH]
+      Prepare host's system dir hierarchy for build env at /ceph.
+      If PATH is supplied, a symlink from /ceph to PATH will be created.
+
+  list-distros
+      List available distributions.
+
+  list-images
+      List all available, created images.
+
+  image-build <release> <distro>
+      Build image for <release> on <distro>
+
+  image-build-all <release>
+      Build all distro images for <release>
+
+  build-prepare <distro> <release> [branch]
+      Prepare images to build a given <release> on <distro>.
+      If [branch] is provided, then ensure said branch is checked out.
+
+  build <distro> <release>
+      Start build process of <release> in <distro>.
+      Presumes existence of build image being available (see 'build-prepare').
+
+  interactive <distro> <release>
+      Start interactive container.
+
+EOF
+}
+
+# prepare directory hierarchy in /ceph, or create a symlink if a path is
+# specified.
+#
+run_prepare() {
+
+  [[ $# -gt 1 ]] && \
+    echo "error: too many arguments" && \
+    usage && return 1
+
+  cmd=$1
+  has_path=false
+
+  [[ $# -eq 1 ]] && has_path=true && user_path=$1
+
+  if [[ ! -e "/ceph" ]]; then
+    if $has_path ; then
+      ln -fs $user_path /ceph
+    else
+      mkdir /ceph
+    fi
+  fi
+
+  [[ ! -e "/ceph/src" ]] && mkdir /ceph/src
+  [[ ! -e "/ceph/ccache" ]] && mkdir /ceph/ccache
+  [[ ! -e "/ceph/bin" ]] && ln -fs $(pwd)/bin /ceph/bin
+  [[ ! -e "/ceph/tools" ]] && ln -fs $(pwd)/bin /ceph/tools
+
+  return 0
+}
+
+if [[ $# -lt 1 ]]; then
+  usage ; exit 1
+fi
+
+cmd=$1
+shift 1
+
+case $cmd in
+  help|--help|-h) usage ; exit 0 ;;
+  prepare)
+    run_prepare || exit 1
+    ;;
+  list-distros)
+    run_list_distros || exit 1
+    ;;
+  list-images)
+    run_list_images || exit 1
+    ;;
+  image-build)
+    run_build || exit 1
+    ;;
+  image-build-all)
+    run_build_all || exit 1
+    ;;
+  build-prepare)
+    run_build_prepare || exit 1
+    ;;
+  build)
+    run_build || exit 1
+    ;;
+  interactive)
+    run_interactive || exit 1
+    ;;
+  *)
+    usage ; exit 1
+    ;;
+esac
