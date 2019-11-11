@@ -1,5 +1,8 @@
 #!/bin/bash
 
+root=$(realpath $(dirname $0)/..)
+#echo "my root: $root"
+
 
 usage() {
   cat <<EOF
@@ -52,20 +55,20 @@ run_prepare() {
   cmd=$1
   has_path=false
 
-  [[ $# -eq 1 ]] && has_path=true && user_path=$1
+  [[ $# -eq 1 ]] && has_path=true && user_path=$(realpath $1)
 
   if [[ ! -e "/ceph" ]]; then
     if $has_path ; then
-      ln -fs $user_path /ceph
+      ln -fs $user_path /ceph || return 1
     else
-      mkdir /ceph
+      mkdir /ceph || return 1
     fi
   fi
 
   [[ ! -e "/ceph/src" ]] && mkdir /ceph/src
   [[ ! -e "/ceph/ccache" ]] && mkdir /ceph/ccache
-  [[ ! -e "/ceph/bin" ]] && ln -fs $(pwd)/bin /ceph/bin
-  [[ ! -e "/ceph/tools" ]] && ln -fs $(pwd)/bin /ceph/tools
+  [[ ! -e "/ceph/bin" ]] && ln -fs ${root}/bin /ceph/bin
+  [[ ! -e "/ceph/tools" ]] && ln -fs ${root}/bin /ceph/tools
 
   return 0
 }
@@ -80,7 +83,7 @@ shift 1
 case $cmd in
   help|--help|-h) usage ; exit 0 ;;
   prepare)
-    run_prepare || exit 1
+    run_prepare $* || exit 1
     ;;
   list-distros)
     run_list_distros || exit 1
