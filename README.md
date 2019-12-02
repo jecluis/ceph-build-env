@@ -147,6 +147,10 @@ build is simplified by running
 `ceph-dev-env build-prepare <distro> <release> [branch]` which will perform
 the following steps:
 
+**NOTE**: this behavior below has been changed: we don't need to checkout the
+branch at this point, we only need to prepare the repository if non-existent.
+Branch checkout should be performed at build time.
+
   1. check if _/ceph/src/<distro>-<release>_ exists and is a git repository;
   2. if not, `https://github.com/ceph/ceph.git` will be cloned to
   _/ceph/src/<distro>-<release>_, and the branch _<release>_ will be checked

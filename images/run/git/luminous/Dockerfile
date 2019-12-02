@@ -1,5 +1,7 @@
 # vim: ft=dockerfile
-FROM ceph-build-env/dev:luminous
+ARG DISTRO=leap-42.3
+
+FROM ceph-build-env/base:${DISTRO}-luminous
 LABEL maintainer="Joao Eduardo Luis <joao@suse.com>"
 
 RUN echo "opensuse leap 42.3 - ceph build - dev luminous"
@@ -11,7 +13,7 @@ ENV CEPH_BASE_CCACHE_DIR /ceph/ccache
 
 WORKDIR /ceph
 
-RUN (echo "grab dot-files from github
+#RUN (echo "grab dot-files from github
 
 CMD /bin/bash
 

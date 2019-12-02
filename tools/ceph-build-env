@@ -29,18 +29,55 @@ COMMANDS:
   image-build-all <release>
       Build all distro images for <release>
 
-  build-prepare <distro> <release> [branch]
+  build-prepare <distro> <release>
       Prepare images to build a given <release> on <distro>.
-      If [branch] is provided, then ensure said branch is checked out.
 
-  build <distro> <release>
+  build <distro> <release> [branch]
       Start build process of <release> in <distro>.
       Presumes existence of build image being available (see 'build-prepare').
+      If [branch] is provided, then ensure said branch is checked out.
 
   interactive <distro> <release>
       Start interactive container.
 
 EOF
+}
+
+# checks if a given image exists
+#
+has_image() {
+
+  [[ $# -ne 1 ]] && return 1
+  img_name="${1}"
+  img_id="$(docker image ls ${img_name} --format '{{.ID}}')"
+  [[ -z "${img_id}" ]] && return 1
+  return 0
+}
+
+# check if we have an available git build image for a release / distro
+#
+has_git_image() {
+  [[ $# -ne 2 ]] && return 1
+
+  img_distro="$1"
+  img_release="$2"
+
+  img_info="ceph-build-env/git:${img_distro}-${img_release}"
+  if ! has_image ${img_info} ; then
+    return 1
+  else
+    return 0
+  fi
+}
+
+has_run_image() {
+  [[ $# -ne 2 ]] && return 1
+  img_name="ceph-build-env/run:${1}-${2}"
+  if ! has_image $img_name ; then
+    return 1
+  else
+    return 0
+  fi
 }
 
 # prepare directory hierarchy in /ceph, or create a symlink if a path is
@@ -58,19 +95,317 @@ run_prepare() {
   [[ $# -eq 1 ]] && has_path=true && user_path=$(realpath $1)
 
   if [[ ! -e "/ceph" ]]; then
-    if $has_path ; then
-      ln -fs $user_path /ceph || return 1
+
+    needs_sudo=false
+    t=$(mktemp -p / 2>/dev/null)
+    if [[ ! -e "$t" ]]; then
+      needs_sudo=true
     else
-      mkdir /ceph || return 1
+      rm $t
     fi
+
+    usr=$(id -un)
+    grp=$(id -gn)
+
+    $needs_sudo && do_sudo=sudo
+
+    if $has_path ; then
+      $do_sudo ln -fs $user_path /ceph || return 1
+    else
+      $do_sudo mkdir /ceph || return 1
+    fi
+    $do_sudo chown ${usr}:${grp} /ceph || return 1
   fi
 
-  [[ ! -e "/ceph/src" ]] && mkdir /ceph/src
-  [[ ! -e "/ceph/ccache" ]] && mkdir /ceph/ccache
-  [[ ! -e "/ceph/bin" ]] && ln -fs ${root}/bin /ceph/bin
-  [[ ! -e "/ceph/tools" ]] && ln -fs ${root}/bin /ceph/tools
+  [[ ! -e "/ceph/src" ]] && ( mkdir /ceph/src || return 1 )
+  [[ ! -e "/ceph/ccache" ]] && ( mkdir /ceph/ccache || return 1 )
+  [[ ! -e "/ceph/bin" ]] && ( mkdir /ceph/bin || return 1 )
+  [[ ! -e "/ceph/tools" ]] && ( mkdir /ceph/tools || return 1 )
+
+
+  echo "prepared build directory hierarchy at '/ceph'"
 
   return 0
+}
+
+# lists available distributions to be built
+#
+run_list_distros() {
+  [[ ! -e "${root}/images" ]] && \
+    echo "error: unable to find 'images' directory" && return 1
+  [[ ! -e "${root}/images/base/distros" ]] && \
+    echo "error: unable to find 'distros' images directory" && return 1
+
+  echo "available distributions:"
+  for d in $(ls ${root}/images/base/distros) ; do
+    echo "\`- $d"
+  done
+}
+
+
+# lists available images, using 'docker image ls', but makes it pretty
+#
+run_list_images() {
+
+  echo "available images:"
+  for t in base git run; do
+
+    repo="ceph-build-env/${t}"
+    old_ifs=$IFS
+    IFS=$'\n'
+    img_ls=($(docker image ls \
+      --format "{{.Tag}};{{.CreatedSince}}" \
+      ${repo}))
+
+    echo "+ ${t}"
+
+    if [[ ${#img_ls} -eq 0 ]]; then
+      echo "\`- (none)"
+      continue
+    fi
+
+    for i in ${img_ls[*]}; do
+      name=$(echo "${i}" | cut -f1 -d';')
+      creation=$(echo "${i}" | cut -f2 -d';')
+      printf "\`- %-30s %-20s\n" ${name} "${creation}"
+    done
+    IFS=$old_ifs
+  done
+
+}
+
+# build a base image for a distro/release combination
+#
+run_image_build() {
+
+  [[ $# -lt 2 ]] && \
+    echo "error: missing arguments" &&
+    usage && return 1
+
+  release="${1}"
+  distro="${2}"
+
+  distros_path="${root}/images/base/distros/${distro}"
+  release_path="${root}/images/base/release"
+
+  [[ ! -e "${distros_path}" ]] && \
+    echo "error: unknown distributions '${distro}'" && \
+    usage && return 1
+
+  [[ -z "${release}" ]] && \
+    echo "error: missing release name" && usage && return 1
+
+  [[ ! -e "${distros_path}/__image_name__" ]] && \
+    echo "error: distribution image has no specified name" && return 1
+  [[ ! -e "${release_path}/__image_name__" ]] && \
+    echo "error: release base image has no specified name" && return 1
+
+  DISTRO=${distro}
+  RELEASE=${release}
+
+  distro_image_tag=$(eval "echo $(cat ${distros_path}/__image_name__)")
+  release_image_tag=$(eval "echo $(cat ${release_path}/__image_name__)")
+
+  echo "> building image for ${release} on ${distro}:"
+  echo " >> ${distro_image_tag}"
+  echo " >> ${release_image_tag}"
+  echo
+
+
+  docker build \
+    --tag ${distro_image_tag} \
+    --file ${distros_path}/Dockerfile \
+    ${root} || return 1
+
+  docker build \
+    --tag ${release_image_tag} \
+    --file ${release_path}/Dockerfile \
+    --build-arg=DISTRO="${DISTRO}" \
+    --build-arg=CEPH_RELEASE="${RELEASE}" \
+    ${root} || return 1
+}
+
+# build all available distro base images for a given release
+#
+run_image_build_all() {
+
+  [[ $# -lt 1 ]] && \
+    echo "error: missing arguments" && usage && return 1
+
+  release="${1}"
+
+  distros_path="${root}/images/base/distros"
+  [[ ! -d "${distros_path}" ]] && \
+    echo "error: not a directory: ${distros_path}" && return 1
+
+  for d in $(ls ${distros_path}); do
+    echo "> ${d}"
+    run_image_build ${release} ${d}
+    [[ $? -ne 0 ]] && return 1
+  done
+}
+
+# prepare a build image (git) to build a given release on a given distro
+#
+run_build_prepare() {
+
+  [[ $# -lt 2 ]] && \
+    echo "error: missing arguments" && usage && return 1
+  [[ $# -gt 2 ]] && \
+    echo "error: too many arguments" && usage && return 1
+
+  distro="${1}"
+  release="${2}"
+
+  build_image_path="${root}/images/git/release"
+
+  echo "> prepare build image"
+  echo " >> distro:  ${distro}"
+  echo " >> release: ${release}"
+
+  [[ ! -d "${build_image_path}" ]] && \
+    echo "error: unable to find git build dir at '${build_image_path}'" && \
+    return 1
+
+  [[ ! -e "${build_image_path}/Dockerfile" || \
+     ! -e "${build_image_path}/__image_name__" ]] && \
+     echo "error: git build image directory: wrong format" && \
+     return 1
+
+  has_error=false
+  for d in /ceph /ceph/src /ceph/ccache /ceph/bin /ceph/tools ; do
+    [[ -d "${d}" ]] && continue
+    has_error=true
+    echo "error: missing directory '${d}'"
+  done
+  $has_error && \
+    echo "error: did you run 'prepare'?" && return 1
+
+  src_dir="/ceph/src/${distro}-${release}"
+  if [[ ! -d "${src_dir}" ]]; then
+    git clone https://github.com/ceph/ceph.git ${src_dir} || return 1
+    git \
+      --git-dir ${src_dir}/.git \
+      --work-tree ${src_dir} \
+      checkout ${release} || return 1
+  fi
+
+  ccache_dir="/ceph/ccache/${distro}-${release}"
+  if [[ ! -d "${ccache_dir}" ]]; then
+    mkdir -p ${ccache_dir} || return 1
+    CCACHE_DIR=${ccache_dir} ccache -M 50G || return 1
+  fi
+
+  DISTRO=${distro}
+  RELEASE=${release}
+
+  build_image_tag=$(eval "echo $(cat ${build_image_path}/__image_name__)")
+
+  echo "> building build image for ${release} on ${distro}:"
+  echo " >> distro:     ${distro_image_tag}"
+  echo " >> release:    ${release_image_tag}"
+  echo " >> image name: ${build_image_tag}"
+  echo
+
+  docker build \
+    --tag ${build_image_tag} \
+    --file ${build_image_path}/Dockerfile \
+    --build-arg=DISTRO=${DISTRO} \
+    --build-arg=CEPH_RELEASE=${RELEASE} \
+    ${root} || return 1
+}
+
+# start a build for a given release on a given distro
+#
+run_build() {
+
+  [[ $# -lt 2 ]] && \
+    echo "error: missing arguments" && usage && return 1
+  [[ $# -gt 3 ]] && \
+    echo "error: too many arguments" && usage && return 1
+
+  distro="$1"
+  release="$2"
+
+  if ! has_git_image $distro $release ; then
+    echo "error: git build image for $release on $distro not available"
+    echo "error: have you run 'build-prepare'?"
+    return 1
+  fi
+
+  branch="${release}"
+  [[ $# -eq 3 ]] && branch="$3"
+
+  src_dir="/ceph/src/${distro}-${release}"
+  ccache_dir="/ceph/ccache/${distro}-${release}"
+
+  [[ ! -d "${src_dir}" ]] && \
+    echo "error: source repo for '${release}' on '${distro}' not found" && \
+    echo "error: have you run 'build-prepare'?" && \
+    return 1
+
+  [[ ! -d "${ccache_dir}" ]] && \
+    echo "error: ccache dir for '${release}' on '${distro}' not found" && \
+    echo "error: have you run 'build-prepare'?" && \
+    return 1
+
+  git \
+    --git-dir ${src_dir}/.git \
+    --work-tree ${src_dir} \
+    checkout ${branch} || return 1
+
+  img="ceph-build-env/git:${distro}-${release}"
+  cid=$(docker run -tid \
+    --name git-${distro}-${release} \
+    -v /ceph/ccache:/ceph/ccache \
+    -v /ceph/src:/ceph/src \
+    -v ${root}/bin:/ceph/bin \
+    ${img})
+  [[ -z "${cid}" ]] && \
+    echo "error: something happened launching build container" && \
+    return 1
+
+  echo "container id: $cid"
+
+  docker logs -f ${cid}
+}
+
+run_interactive() {
+
+  distro="${1}"
+  release="${2}"
+
+  [[ -z "${distro}" ]] && \
+    echo "error: interactive: no distro provided" && return 1
+  [[ -z "${release}" ]] && \
+    echo "error: interactive: no release provided" && return 1
+
+  run_img_path="${root}/images/run/Dockerfile"
+  run_img_name="ceph-build-env/run:${distro}-${release}"
+  if ! has_image ${run_img_name} ; then
+
+    echo "building image for ${release} on ${distro}"
+    docker build \
+      --tag ${run_img_name} \
+      --file ${run_img_path} \
+      --build-arg=DISTRO=${distro} \
+      --build-arg=CEPH_RELEASE=${release} \
+      ${root} || return 1
+  fi
+
+  cid=$(docker run -tid \
+    --name run-${distro}-${release} \
+    -v /ceph/ccache:/ceph/ccache \
+    -v /ceph/src:/ceph/src \
+    -v ${root}/bin:/ceph/bin \
+    ${img_name} 2>/dev/null)
+  [[ $? -ne 0 ]] && \
+    echo "error: interactive: something happened launching the container" && \
+    return 1
+
+  echo "container id: ${cid}"
+  echo "attaching..."
+  docker attach ${cid}
 }
 
 if [[ $# -lt 1 ]]; then
@@ -92,19 +427,19 @@ case $cmd in
     run_list_images || exit 1
     ;;
   image-build)
-    run_build || exit 1
+    run_image_build $* || exit 1
     ;;
   image-build-all)
-    run_build_all || exit 1
+    run_image_build_all $* || exit 1
     ;;
   build-prepare)
-    run_build_prepare || exit 1
+    run_build_prepare $* || exit 1
     ;;
   build)
-    run_build || exit 1
+    run_build $* || exit 1
     ;;
   interactive)
-    run_interactive || exit 1
+    run_interactive $* || exit 1
     ;;
   *)
     usage ; exit 1
